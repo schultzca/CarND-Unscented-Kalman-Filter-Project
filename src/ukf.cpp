@@ -1,5 +1,6 @@
 #include "ukf.h"
 #include "tools.h"
+#include "measurement_models.h"
 #include "process_models.h"
 #include "Eigen/Dense"
 #include <iostream>
@@ -156,8 +157,11 @@ void UKF::Prediction(double delta_t) {
     // create predicted covariance matrix
     MatrixXd Pp = MatrixXd(xa.size(), xa.size());
 
+    // initialize weights vector
+    weights_ = VectorXd(2 * xa.size() + 1);
+
     // compute predicted mean and covariance matrix
-    PredictMeanAndCovariance(Xsig_pred, lambda, xp, Pp);
+    PredictMeanAndCovariance(Xsig_pred, lambda, xp, Pp, weights_);
 
     // Set state to predicted state
     x_ = xp.head(5);
@@ -208,12 +212,11 @@ MatrixXd UKF::GenerateSigmaPoints(VectorXd x, MatrixXd P, double lambda) {
  * @param {VectorXd} xp Predicted state vector (output)
  * @param {MatrixXd} Pp Predicted covariance matrix (output)
  */
-void UKF::PredictMeanAndCovariance(MatrixXd Xsig_pred, double lambda, VectorXd &xp, MatrixXd &Pp) {
+void UKF::PredictMeanAndCovariance(MatrixXd Xsig_pred, double lambda, VectorXd &xp, MatrixXd &Pp, VectorXd &weights) {
 
     int n_x = Xsig_pred.col(0).size();
 
     // compute weights
-    VectorXd weights = VectorXd(2 * n_x + 1);
     double weight0 = lambda/(lambda + n_x);
     weights(0) = weight0;
     for (int i = 1; i < 2 * n_x + 1; i++) {
@@ -246,14 +249,35 @@ void UKF::PredictMeanAndCovariance(MatrixXd Xsig_pred, double lambda, VectorXd &
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
-    /**
-    TODO:
 
-    Complete this function! Use lidar data to update the belief about the object's
-    position. Modify the state vector, x_, and covariance, P_.
+    // Measurement sigma points
+    MatrixXd Zsig = MeasurementModels::LidarCRTV_vec(Xsig_pred_);
 
-    You'll also need to calculate the lidar NIS.
-    */
+    // Mean predicted state
+    VectorXd z_pred = VectorXd(2);
+    z_pred << 0, 0;
+    for (int i=0; i < weights_.size(); i++) {
+        z_pred += weights_(i)*Zsig.col(i);
+    }
+
+    // Sensor covariance matrix
+    MatrixXd R = MatrixXd(2, 2);
+    R.fill(0);
+    R(0,0) = std_laspx_ * std_laspx_;
+    R(0,0) = std_laspy_ * std_laspy_;
+
+    // Measurement covariance matrix
+    MatrixXd S = MatrixXd(2, 2);
+    S.fill(0);
+    for (int i=0; i < weights_.size(); i++) {
+        VectorXd z_diff = Zsig.col(i) - z_pred;
+        S += weights_(i)*z_diff*z_diff.transpose();
+    }
+    S = S.array() + R.array();
+
+    // Cross-correlation between sigma points in state space and measurement space
+    MatrixXd
+
 }
 
 /**

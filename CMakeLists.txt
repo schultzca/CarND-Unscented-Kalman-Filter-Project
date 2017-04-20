@@ -7,6 +7,6 @@ add_definitions(-std=c++0x)
 set(sources
    src/ukf.cpp
    src/main.cpp
-   src/tools.cpp src/measurement_models.h src/process_models.h src/process_models.cpp)
+   src/tools.cpp src/measurement_models.h src/process_models.h src/process_models.cpp src/measurement_models.cpp)
 
 add_executable(UnscentedKF ${sources})

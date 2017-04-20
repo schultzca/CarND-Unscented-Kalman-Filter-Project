@@ -13,6 +13,7 @@ using Eigen::VectorXd;
 using Eigen::MatrixXd;
 
 class MeasurementModels {
+public:
     /**
      * CRTV radar state vector to measurement space model. This function
      * converts the CRTV state vector to the corresponding measurement
@@ -43,4 +44,5 @@ class MeasurementModels {
      * @return (MatrixXd) lidar measurement matrix (dim 2, n)
      */
     static MatrixXd LidarCRTV_vec(MatrixXd X);
+
 };

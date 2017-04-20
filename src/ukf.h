@@ -129,7 +129,7 @@ private:
      * @param {VectorXd} xp Predicted state vector (output)
      * @param {MatrixXd} Pp Predicted covariance matrix (output)
      */
-    void PredictMeanAndCovariance(MatrixXd Xsig_pred, double lambda, VectorXd &xp, MatrixXd &Pp);
+    void PredictMeanAndCovariance(MatrixXd Xsig_pred, double lambda, VectorXd &xp, MatrixXd &Pp, VectorXd &weights);
 
 };
 
