@@ -5,20 +5,26 @@
 
 class Tools {
 public:
-  /**
-  * Constructor.
-  */
-  Tools();
+    /**
+    * Constructor.
+    */
+    Tools();
 
-  /**
-  * Destructor.
-  */
-  virtual ~Tools();
+    /**
+    * Destructor.
+    */
+    virtual ~Tools();
 
-  /**
-  * A helper method to calculate RMSE.
-  */
-  Eigen::VectorXd CalculateRMSE(const std::vector<Eigen::VectorXd> &estimations, const std::vector<Eigen::VectorXd> &ground_truth);
+    /**
+     * String formatter for vectors and arrays that makes it easy to load
+     * as numpy array.
+     */
+    static Eigen::IOFormat NumpyArrayFormat;
+
+    /**
+     * A helper method to calculate RMSE.
+     */
+    Eigen::VectorXd CalculateRMSE(const std::vector<Eigen::VectorXd> &estimations, const std::vector<Eigen::VectorXd> &ground_truth);
 
 };
 

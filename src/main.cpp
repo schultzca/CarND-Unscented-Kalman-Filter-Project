@@ -8,6 +8,7 @@
 #include "ukf.h"
 #include "ground_truth_package.h"
 #include "measurement_package.h"
+#include "tools.h"
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -59,6 +60,8 @@ int main(int argc, char* argv[]) {
 
   string out_file_name_ = argv[2];
   ofstream out_file_(out_file_name_.c_str(), ofstream::out);
+  ofstream state_output_("state_output.txt", ofstream::out);
+  ofstream state_cov_output_("state_cov_output.txt", ofstream::out);
 
   check_files(in_file_, in_file_name_, out_file_, out_file_name_);
 
@@ -159,8 +162,18 @@ int main(int argc, char* argv[]) {
 
 
   for (size_t k = 0; k < number_of_measurements; ++k) {
-    // Call the UKF-based fusion
-    ukf.ProcessMeasurement(measurement_pack_list[k]);
+
+    try {
+      // Call the UKF-based fusion
+      ukf.ProcessMeasurement(measurement_pack_list[k]);
+    } catch (const char* msg) {
+      cerr << msg << endl;
+      break;
+    }
+
+    // output state and state covariance matrix
+    state_output_ << ukf.x_.format(Tools::NumpyArrayFormat) << endl;
+    state_cov_output_ << ukf.P_.format(Tools::NumpyArrayFormat) << endl;
 
     // timestamp
     out_file_ << measurement_pack_list[k].timestamp_ << "\t"; // pos1 - est
@@ -226,6 +239,12 @@ int main(int argc, char* argv[]) {
   // close files
   if (out_file_.is_open()) {
     out_file_.close();
+  }
+  if (state_output_.is_open()) {
+    state_output_.close();
+  }
+  if (state_cov_output_.is_open()) {
+    state_cov_output_.close();
   }
 
   if (in_file_.is_open()) {

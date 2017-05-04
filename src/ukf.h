@@ -62,10 +62,7 @@ public:
     ///* Dimension of augmented state vector
     int n_aug_;
 
-    ///* Weights of sigma points
-    VectorXd weights_;
-
-    ///* Sigma point spreading parameter
+    ///* Sigma point spread parameter
     double lambda_;
 
     ///* the current NIS for radar
@@ -108,28 +105,6 @@ public:
      * @param meas_package The measurement at k+1
      */
     void UpdateRadar(MeasurementPackage meas_package);
-
-private:
-
-    /**
-     * Generate sigma points given mean vector and corresponding
-     * covariance matrix. This does not have any implicit assumptions
-     * regarding the model. Augment x and P prior to calling this
-     * function.
-     * @param (VectorXd) x State vector
-     * @param (MatrixXd) P State covariance matrix
-     * @return (MatrixXd) Augmented sigma point matrix
-     */
-    static MatrixXd GenerateSigmaPoints(VectorXd x, MatrixXd P, double lambda);
-
-    /**
-     * Compute predicted mean and covariance matrix.
-     * @param {MatrixXd} Xsig Sigma points
-     * @param {double} lambda spreading parameter
-     * @param {VectorXd} xp Predicted state vector (output)
-     * @param {MatrixXd} Pp Predicted covariance matrix (output)
-     */
-    void PredictMeanAndCovariance(MatrixXd Xsig_pred, double lambda, VectorXd &xp, MatrixXd &Pp, VectorXd &weights);
 
 };
 
