@@ -8,6 +8,12 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
+/**
+ * Predict state using CRTV model and time delta.
+ * @param x {VectorXd} state vector
+ * @param dt {double} time delta (seconds)
+ * @return {VectorXd} predicted state vector
+ */
 VectorXd ProcessModel(VectorXd x, double dt) {
     double px = x(0);
     double py = x(1);
@@ -45,7 +51,11 @@ VectorXd ProcessModel(VectorXd x, double dt) {
     return xp;
 }
 
-// Radar measurement function
+/**
+ * Convert state vector to radar measurement vector.
+ * @param x {VectorXd} state vector (dim 5)
+ * @return {VectorXd} measurement vector (dim 3)
+ */
 VectorXd RadarModel(VectorXd x){
     double  px = x(0);
     double  py = x(1);
@@ -53,19 +63,16 @@ VectorXd RadarModel(VectorXd x){
     double  psi = x(3);
     double dpsi = x(4);
 
-    VectorXd Z(3);
+    VectorXd z(3);
+    z.setZero();
 
-    if (sqrt(pow(px*px + py*py,2))>0.001){
-        Z(0) = sqrt(px*px+py*py);
-        Z(1) = atan2(py,px);
-        Z(2) = (px*v*cos(psi) + py*v*sin(psi))/Z(0);
-        return Z;
-    } else {
-        Z(0) = sqrt(0.001);
-        Z(1) = 0;
-        Z(2) = (px*v*cos(psi) + py*v*sin(psi))/Z(0);
-        return Z;
+    // handle division by zero
+    if (sqrt(pow(px*px + py*py,2))>0.001) {
+        z(0) = sqrt(px * px + py * py);
+        z(1) = atan2(py, px);
+        z(2) = (px * v * cos(psi) + py * v * sin(psi)) / z(0);
     }
+    return z;
 }
 
 /**
@@ -88,10 +95,10 @@ UKF::UKF() {
     lambda_ = 3 - n_aug_;
 
     // Process noise standard deviation longitudinal acceleration in m/s^2
-    std_a_ = 5;
+    std_a_ = 30;
 
     // Process noise standard deviation yaw acceleration in rad/s^2
-    std_yawdd_ = 1;
+    std_yawdd_ = 30;
 
     // Laser measurement noise standard deviation position1 in m
     std_laspx_ = 0.15;
