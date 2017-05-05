@@ -30,7 +30,7 @@ public:
     MatrixXd P_;
 
     ///* predicted sigma points matrix
-    MatrixXd Xsig_pred_;
+    MatrixXd Xp_;
 
     ///* time when the state is true, in us
     long long time_us_;

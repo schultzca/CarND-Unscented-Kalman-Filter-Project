@@ -9,14 +9,13 @@ using Eigen::VectorXd;
 using std::vector;
 
 VectorXd ProcessModel(VectorXd x, double dt) {
-
-    double   px = x(0);
-    double   py = x(1);
-    double    v = x(2);
-    double  psi = x(3);
+    double px = x(0);
+    double py = x(1);
+    double v = x(2);
+    double psi = x(3);
     double dpsi = x(4);
-    double   va = x(5);
-    double   vp = x(6);
+    double va = x(5);
+    double vp = x(6);
 
     VectorXd xp(5);
     xp.setZero();
@@ -24,27 +23,49 @@ VectorXd ProcessModel(VectorXd x, double dt) {
     VectorXd dx(5);
     dx.setZero();
 
-    double dt2 = dt*dt;
+    double dt2 = dt * dt;
 
     // handle division by zero
     if (fabs(dpsi) < 0.001) {
-        dx << v*cos(psi)*dt + 0.5*dt2*cos(psi)*va,
-              v*sin(psi)*dt + 0.5*dt2*sin(psi)*va,
-              dt*va,
-              0.5*dt2*vp,
-              dt*vp;
-    }
-    else {
-        dx << (v/dpsi)*(sin(psi + dpsi*dt) - sin(psi)) + 0.5*dt2*cos(psi)*va,
-              (v/dpsi)*(cos(psi) - cos(psi + dpsi*dt)) + 0.5*dt2*sin(psi)*va,
-              dt*va,
-              dt*dpsi + 0.5*dt2*vp,
-              dt*vp;
+        dx << v * cos(psi) * dt + 0.5 * dt2 * cos(psi) * va,
+                v * sin(psi) * dt + 0.5 * dt2 * sin(psi) * va,
+                dt * va,
+                0.5 * dt2 * vp,
+                dt * vp;
+    } else {
+        dx << (v / dpsi) * (sin(psi + dpsi * dt) - sin(psi)) + 0.5 * dt2 * cos(psi) * va,
+                (v / dpsi) * (cos(psi) - cos(psi + dpsi * dt)) + 0.5 * dt2 * sin(psi) * va,
+                dt * va,
+                dt * dpsi + 0.5 * dt2 * vp,
+                dt * vp;
     }
 
     xp = x.head(5) + dx;
 
     return xp;
+}
+
+// Radar measurement function
+VectorXd RadarModel(VectorXd x){
+    double  px = x(0);
+    double  py = x(1);
+    double   v = x(2);
+    double  psi = x(3);
+    double dpsi = x(4);
+
+    VectorXd Z(3);
+
+    if (sqrt(pow(px*px + py*py,2))>0.001){
+        Z(0) = sqrt(px*px+py*py);
+        Z(1) = atan2(py,px);
+        Z(2) = (px*v*cos(psi) + py*v*sin(psi))/Z(0);
+        return Z;
+    } else {
+        Z(0) = sqrt(0.001);
+        Z(1) = 0;
+        Z(2) = (px*v*cos(psi) + py*v*sin(psi))/Z(0);
+        return Z;
+    }
 }
 
 /**
@@ -67,10 +88,10 @@ UKF::UKF() {
     lambda_ = 3 - n_aug_;
 
     // Process noise standard deviation longitudinal acceleration in m/s^2
-    std_a_ = 2.5;
+    std_a_ = 5;
 
     // Process noise standard deviation yaw acceleration in rad/s^2
-    std_yawdd_ = 0.5;
+    std_yawdd_ = 1;
 
     // Laser measurement noise standard deviation position1 in m
     std_laspx_ = 0.15;
@@ -95,7 +116,6 @@ UKF::~UKF() {}
  * either radar or laser.
  */
 void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
-
     if (!is_initialized_) {
         if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
             double px = meas_package.raw_measurements_(0);
@@ -129,6 +149,13 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
         delta_t -= dt;
     }
     Prediction(delta_t);
+
+    if (meas_package.sensor_type_ == MeasurementPackage::LASER && use_laser_) {
+        UpdateLidar(meas_package);
+    }
+    else if (meas_package.sensor_type_ == MeasurementPackage::RADAR && use_radar_) {
+        UpdateRadar(meas_package);
+    }
 }
 
 /**
@@ -181,6 +208,8 @@ void UKF::Prediction(double delta_t) {
 
     MatrixXd ors = MatrixXd::Ones(1, n_sig);
     P_ = (Xp - x_*ors) * MatrixXd(weights.asDiagonal()) * (Xp - x_*ors).transpose();
+
+    Xp_ = Xp;
 }
 
 /**
@@ -188,7 +217,53 @@ void UKF::Prediction(double delta_t) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
+    int n_z = 2;
+    int n_sig = 2 * n_aug_ + 1;
 
+    // convert sigma points to laser measurements
+    MatrixXd Zp(n_z, n_sig);
+    Zp = Xp_.topRows(n_z);
+
+    // calculate sigma point weights
+    VectorXd weights(n_sig);
+    weights(0) = lambda_ / (lambda_ + n_aug_);
+    weights.tail(n_sig - 1).fill(0.5 / (lambda_ + n_aug_));
+    MatrixXd W = MatrixXd(weights.asDiagonal());
+
+    // calculate predicted mean
+    VectorXd zp(n_z);
+    zp = Zp*weights;
+
+    // create measurement noise covariance
+    VectorXd r_laser(n_z);
+    r_laser << std_laspx_ * std_laspx_, std_laspy_ * std_laspy_;
+
+    MatrixXd R(n_z, n_z);
+    R = MatrixXd(r_laser.asDiagonal());
+
+    // calculate measurement covariance
+    MatrixXd S(n_z, n_z);
+    MatrixXd ors = MatrixXd::Ones(1, n_sig);
+    S = (Zp - zp*ors)*W*(Zp - zp*ors).transpose() + R;
+
+    // calculate cross-correlation matrix
+    MatrixXd T(n_x_, n_z);
+    T = (Xp_ - x_*ors)*W*(Zp - zp*ors).transpose();
+
+    // calculate Kalman gain
+    MatrixXd K(n_x_, n_z);
+    K = T*S.inverse();
+
+    // measurement vector
+    VectorXd z(n_z);
+    z = meas_package.raw_measurements_;
+
+    // update state estimate
+    x_ = x_ + K*(z - zp);
+
+    // update estimate covariance
+    P_ = P_ - K*S*K.transpose();
+    NIS_laser_ = (z - zp).transpose()*S*(z - zp);
 }
 
 /**
@@ -196,5 +271,53 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
+    int n_z = 3;
+    int n_sig = 2*n_aug_ + 1;
 
+    // convert sigma points to radar measurements
+    MatrixXd Zp(n_z, n_sig);
+    for (int i = 0; i < n_sig; i++) {
+        Zp.col(i) = RadarModel(Xp_.col(i));
+    }
+
+    // calculate sigma point weights
+    VectorXd weights(n_sig);
+    weights(0) = lambda_ / (lambda_ + n_aug_);
+    weights.tail(n_sig - 1).fill(0.5 / (lambda_ + n_aug_));
+    MatrixXd W = MatrixXd(weights.asDiagonal());
+
+    // calculate predicted mean
+    VectorXd zp(n_z);
+    zp = Zp*weights;
+
+    // create measurement noise covariance
+    VectorXd r_radar(n_z);
+    r_radar << std_radr_ * std_radr_, std_radphi_ * std_radphi_, std_radrd_ * std_radrd_;
+
+    MatrixXd R(n_z, n_z);
+    R = MatrixXd(r_radar.asDiagonal());
+
+    // calculate measurement covariance
+    MatrixXd S(n_z, n_z);
+    MatrixXd ors = MatrixXd::Ones(1, n_sig);
+    S = (Zp - zp*ors)*W*(Zp - zp*ors).transpose() + R;
+
+    // calculate cross-correlation matrix
+    MatrixXd T(n_x_, n_z);
+    T = (Xp_ - x_*ors)*W*(Zp - zp*ors).transpose();
+
+    // calculate Kalman gain
+    MatrixXd K(n_x_, n_z);
+    K = T*S.inverse();
+
+    // measurement vector
+    VectorXd z(n_z);
+    z = meas_package.raw_measurements_;
+
+    // update state estimate
+    x_ = x_ + K*(z - zp);
+
+    // update estimate covariance
+    P_ = P_ - K*S*K.transpose();
+    NIS_radar_ = (z - zp).transpose()*S*(z - zp);
 }
