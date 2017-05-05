@@ -8,6 +8,13 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
+double ConstrainAngle(double x){
+    x = fmod(x + M_PI, M_2_PI);
+    if (x < 0)
+        x += M_2_PI;
+    return x - M_PI;
+}
+
 /**
  * State prediction function.
  * @param x augmented state vector (dim 7)
@@ -51,29 +58,26 @@ VectorXd StatePrediction(VectorXd x, double dt) {
  * @param x state vector (dim 5)
  * @return measurement vector
  */
-VectorXd RadarMeasurement(VectorXd x) {
-    double px = x(0);
-    double py = x(1);
-    double vm = x(2);
-    double yaw = x(3);
-    double yawd = x(4);
+VectorXd RadarMeasurement(VectorXd x){
+    double  px = x(0);
+    double  py = x(1);
+    double  vm = x(2);
+    double  yaw = x(3);
+    double  yawd = x(4);
 
-    VectorXd z = VectorXd(3);
+    VectorXd Z = VectorXd(3);
 
-    const double th = 0.001;
-
-    // avoid division by zero
-    if (sqrt(pow(px, 2) + pow(py, 2)) > th) {
-        z(0) = sqrt(pow(px, 2) + pow(py, 2));
-        z(1) = atan2(py, px);
-        z(2) = (px * vm * cos(yaw) + py * vm * sin(yaw)) / z(0);
+    if (sqrt(pow(px*px + py*py,2))>0.001){
+        Z(0) = sqrt(px*px+py*py);
+        Z(1) = atan2(py,px);
+        Z(2) = (px*vm*cos(yaw) + py*vm*sin(yaw))/Z(0);
+        return Z;
     } else {
-        z(0) = th;
-        z(1) = atan2(th, th);
-        z(2) = (px * vm * cos(yaw) + py * vm * sin(yaw)) / z(0);
+        Z(0) = sqrt(0.001);
+        Z(1) = atan2(0.001,0.001);
+        Z(2) = (px*vm*cos(yaw) + py*vm*sin(yaw))/Z(0);
+        return Z;
     }
-
-    return z;
 }
 
 /**
@@ -81,7 +85,7 @@ VectorXd RadarMeasurement(VectorXd x) {
  */
 UKF::UKF() {
     // if this is false, laser measurements will be ignored (except during init)
-    use_laser_ = false;
+    use_laser_ = true;
 
     // if this is false, radar measurements will be ignored (except during init)
     use_radar_ = false;
@@ -173,8 +177,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
         time_us_ = meas_package.timestamp_;
 
-        // done initializing, no need to predict or update
-        is_initialized_ = true;
         return;
     }
 
@@ -190,7 +192,9 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     UKF::Prediction(delta_t);
 
     if (meas_package.sensor_type_ == MeasurementPackage::RADAR && use_radar_) {
-        UpdateRadar(meas_package);
+        if (fabs(meas_package.raw_measurements_(0)) > 0.001) {
+            UpdateRadar(meas_package);
+        }
     }
     else if (meas_package.sensor_type_ == MeasurementPackage::LASER && use_laser_) {
         double px = meas_package.raw_measurements_(0);
@@ -228,9 +232,6 @@ void UKF::Prediction(double delta_t) {
 
     A_aug = P_aug.llt().matrixL();
 
-    // row vector to broad cast mean vector as matrix
-
-
     Xsig_aug << x_aug,
                 x_aug * ones_aug + sqrt(lambda_ + n_aug_) * A_aug,
                 x_aug * ones_aug - sqrt(lambda_ + n_aug_) * A_aug;
@@ -251,6 +252,8 @@ void UKF::Prediction(double delta_t) {
 
     x_ = Xsig_pred * weights;
     P_ = (Xsig_pred - x_ * ones_sig) * W * (Xsig_pred - x_ * ones_sig).transpose();
+
+    Xsig_pred_ = Xsig_pred;
 }
 
 /**
@@ -259,29 +262,28 @@ void UKF::Prediction(double delta_t) {
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
-    // measurement vector
     VectorXd z = meas_package.raw_measurements_;
 
-    // measurement function
-    MatrixXd H = MatrixXd(2, 5);
+    MatrixXd H = MatrixXd(2, n_x_);
     H << 1, 0, 0, 0, 0,
          0, 1, 0, 0, 0;
 
-    // measurement noise covariance
     MatrixXd R = MatrixXd(2, 2);
-    R(0, 0) = pow(std_laspx_, 2);
-    R(1, 1) = pow(std_laspy_, 2);
+    R << pow(std_laspx_, 2), 0,
+         0, pow(std_laspy_, 2);
 
     VectorXd z_pred = H * x_;
     VectorXd y = z - z_pred;
-    MatrixXd S = H * P_ * H.transpose() + R;
+    MatrixXd Ht = H.transpose();
+    MatrixXd S = H * P_ * Ht + R;
+    MatrixXd Si = S.inverse();
+    MatrixXd PHt = P_ * Ht;
+    MatrixXd K = PHt * Si;
 
-    // calculate kalman gain
-    MatrixXd K = P_ * H.transpose() * S.inverse();
-
-    // update state estimate and estimate covariance
-    MatrixXd I = MatrixXd(n_x_, n_x_);
-    x_ = x_ + K * y;
+    //new estimate
+    x_ = x_ + (K * y);
+    long x_size = x_.size();
+    MatrixXd I = MatrixXd::Identity(x_size, x_size);
     P_ = (I - K * H) * P_;
 
     NIS_laser_ = (z - z_pred).transpose() * S * (z - z_pred);
@@ -292,12 +294,66 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
-    /**
-    TODO:
 
-    Complete this function! Use radar data to update the belief about the object's
-    position. Modify the state vector, x_, and covariance, P_.
+    int n_z = 3;
+    int n_sig = 2 * n_aug_ + 1;
 
-    You'll also need to calculate the radar NIS.
-    */
+    VectorXd weights = VectorXd(n_sig);
+    weights(0) = lambda_ / (lambda_ + n_aug_);
+    weights.tail(n_sig - 1).fill(0.5 / (lambda_ + n_aug_));
+
+    // convert sigma points to measurement space
+    MatrixXd Zsig = MatrixXd(n_z, n_sig);
+    for (int i = 0; i < n_sig; i++) {
+        Zsig.col(i) = RadarMeasurement(Xsig_pred_.col(i));
+    }
+
+    // predict state mean
+    VectorXd z_pred = VectorXd(3);
+    z_pred = Zsig * weights;
+
+//    cout << z_pred << endl;
+
+    MatrixXd ones = MatrixXd(1, n_sig);
+    ones.setOnes();
+
+    MatrixXd Z_diff = MatrixXd(n_z, n_sig);
+    Z_diff = Zsig - z_pred * ones;
+
+//    cout << Z_diff << endl;
+
+    // calculate measurement covariance
+    MatrixXd S = MatrixXd(n_z, n_z);
+    S = Z_diff * MatrixXd(weights.asDiagonal()) * Z_diff.transpose();
+
+    VectorXd r_radar = VectorXd(n_z);
+    r_radar << std_radr_, std_radphi_, std_radrd_;
+
+    S = S + MatrixXd(r_radar.asDiagonal());
+
+    cout << S << endl;
+
+    MatrixXd X_diff = MatrixXd(n_x_, n_sig);
+    X_diff = Xsig_pred_ - x_ * ones;
+
+    cout << X_diff << endl;
+
+    // calculate cross correlation matrix
+    MatrixXd T = MatrixXd(n_x_, n_z);
+    T = X_diff * MatrixXd(weights.asDiagonal()) * Z_diff.transpose();
+
+    cout << T << endl;
+
+    // calculate kalman gain
+    MatrixXd K = T * S.inverse();
+
+    cout << K << endl;
+
+    VectorXd z = VectorXd(3);
+    z = meas_package.raw_measurements_;
+
+    x_ = x_ + K * (z - z_pred);
+    P_ = P_ - K * S * K.transpose();
+
+    NIS_radar_ = (z - z_pred).transpose() * S * (z - z_pred);
 }
