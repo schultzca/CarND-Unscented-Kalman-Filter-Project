@@ -1,5 +1,8 @@
 # silly macOS
 .DS_Store
+.idea
+.ipynb_checkpoints
+
 
 # build files
 build/
